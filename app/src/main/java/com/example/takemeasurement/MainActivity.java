@@ -345,7 +345,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
 
 
-                lineDist = (lineDist/85);
+                lineDist = (lineDist/86);
             TextView mainView = (TextView) findViewById(R.id.textView1);
             mainView.setText(String.format("Dist: %.2f", lineDist));
             TextView newView = (TextView) findViewById(R.id.textView2);
