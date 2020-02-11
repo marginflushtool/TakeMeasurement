@@ -1,9 +1,13 @@
 package com.example.takemeasurement;
 
 import android.Manifest;
+import android.content.Context;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.Camera;
+import android.hardware.camera2.CameraCharacteristics;
+import android.hardware.camera2.CameraManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
@@ -24,14 +28,20 @@ import org.opencv.core.Point;
 import org.opencv.core.Scalar;
 import org.opencv.imgproc.Imgproc;
 
+
 import java.io.File;
 import java.io.IOException;
+import java.lang.reflect.Array;
+import java.security.Policy;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Vector;
 import java.util.Arrays;
 
+ import static android.hardware.camera2.CameraMetadata.LENS_FACING_FRONT;
+import static android.hardware.camera2.CameraMetadata.LENS_INFO_FOCUS_DISTANCE_CALIBRATION_APPROXIMATE;
 import static android.os.Environment.getExternalStoragePublicDirectory;
 import static org.opencv.android.Utils.*;
 
@@ -45,11 +55,11 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     ImageView imageView;
     String pathTofile;
     Mat analysis;
-    int canny_Min = 40;
-            int canny_Max = 80;
-            int hough_Maxgap = 120;
-            int hough_Min = 900 ;
-            int hThresh = 80;
+    int canny_Min = 30;
+            int canny_Max = 70;
+            int hough_Maxgap = 80;
+            int hough_Min = 950 ;
+            int hThresh = 70;
             int ksize = 5;
             int iterations = 1;
     double lineDist = 2.00;
@@ -64,7 +74,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     ArrayList<Double> lineDistArray = new ArrayList<>() ;
     ArrayList<ArrayList<Double>> vertLines = new ArrayList<ArrayList<Double>>();
     List<Double> line = new ArrayList<Double>(4);
-
+    double focalLength = 0.0;
 
     private static final String TAG = MainActivity.class.getSimpleName();
 
@@ -120,7 +130,14 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     }
 
     private void dispatchPictureTakerAction() {
-        Intent takePic = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+          Intent takePic = new Intent(MediaStore.ACTION_IMAGE_CAPTURE);
+ //         CameraManager manager = (CameraManager) getSystemService(Context.CAMERA_SERVICE);
+   //         CameraCharacteristics characteristics = manager.getCameraCharacteristics(mCameraId);
+     //         focalLength = characteristics.get(CameraCharacteristics.LENS_INFO_HYPERFOCAL_DISTANCE);
+
+        //        Log.d(TAG, "focal leng  " + focalLength);
+//        Log.d(TAG, "Focal length:"+Highgui.CV_CAP_PROP_ANDROID_FOCAL_LENGTH);
+
         if (takePic.resolveActivity(getPackageManager()) != null) {
             File photoFile = null;
             photoFile = createPhotoFile();
@@ -152,7 +169,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
     private void blurPic(Mat imageForAnalysis) {
 
         Imgproc.cvtColor(imageForAnalysis, imageForAnalysis, Imgproc.COLOR_RGBA2GRAY);
-        Imgproc.medianBlur(imageForAnalysis, imageForAnalysis, 7);
+        Imgproc.medianBlur(imageForAnalysis, imageForAnalysis, 11);
 
   //      Imgproc.dilate(imageForAnalysis, imageForAnalysis, new Mat(), new Point(-1, -1),iterations);
   //      Imgproc.erode(imageForAnalysis, imageForAnalysis, new Mat(), new Point(-1, -1),iterations);
@@ -248,53 +265,95 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
                     vertLines.get(numOfLine).add(2,x2);
                     vertLines.get(numOfLine).add(3,y2);
 
-                    Log.d(TAG, "vert line X1 " + vertLines.get(numOfLine).get(0));
+ //                   Log.d(TAG, "vert line X1 " + vertLines.get(numOfLine).get(0));
                     numOfLine++;
                 }
                  }
             numOfLine = numOfLine - 1;   // numOfLine = number of verticle lines
             Log.d(TAG, "vert lines " + numOfLine);
+            for (int h = 0; h<= numOfLine; h++) {
+                double rx1 = vertLines.get(h).get(0),
+                        ry1 = vertLines.get(h).get(1),
+                        rx2 = vertLines.get(h).get(2),
+                        ry2 = vertLines.get(h).get(3);
+ //               Log.d(TAG, "ref vert line X1 " + vertLines.get(numOfLine).get(1));
+
+                Point refStart = new Point(rx1, ry1);
+                Point refEnd = new Point(rx2, ry2);
 
 
-                    for (int j = 0; j <= numOfLine; j++) {  // for all the verticle lines get the distance between the lines put into linDistArray
-                         double x1 = vertLines.get(j).get(0),
-                                y1 = vertLines.get(j).get(1),
-                                x2 = vertLines.get(j).get(2),
-                                y2 = vertLines.get(j).get(3);
-                        Log.d(TAG, "each vert line X1 " + vertLines.get(numOfLine).get(1));
+                for (int j = 0; j <= numOfLine; j++) {  // for all the verticle lines get the distance between the lines put into linDistArray
+                    double x1 = vertLines.get(j).get(0),
+                            y1 = vertLines.get(j).get(1),
+                            x2 = vertLines.get(j).get(2),
+                            y2 = vertLines.get(j).get(3);
+ //                   Log.d(TAG, "inner vert line X1 " + vertLines.get(numOfLine).get(1));
 
-                        Point start = new Point(x1, y1);
-                        Point end = new Point(x2, y2);
-                         lineSlope1 = ((end.y - start.y) / (end.x - start.x));  // get the slope of the line
-                        lineIntercept1 = (start.y - (lineSlope1 * start.x));  // get the intercept of the line
-                        oldStart = start;
-                        oldEnd = end;
+                    Point start = new Point(x1, y1);
+                    Point end = new Point(x2, y2);
+                    lineSlope1 = ((end.y - start.y) / (end.x - start.x));  // get the slope of the line
+                    lineIntercept1 = (start.y - (lineSlope1 * start.x));  // get the intercept of the line
+                    //                      oldStart = start;
+                    //                      oldEnd = end;
 
 
-                        if (j > 1) {   // measure from the old line to the new line
-                            lineIntercept2 = (oldStart.y - (lineSlope1 * oldEnd.x));
-                            lineDist = (Math.abs(lineIntercept2 - lineIntercept1)) / (Math.sqrt((lineSlope1 * lineSlope1) + 1));
-                            lineDistArray.add(lineDist);
-                            Log.d(TAG, "line dist " + lineDist);
-                        }
+                    if (j > 1) {   // measure from the ref line to the new line
+                        lineIntercept2 = (refStart.y - (lineSlope1 * refEnd.x));
+                        lineDist = (Math.abs(lineIntercept2 - lineIntercept1)) / (Math.sqrt((lineSlope1 * lineSlope1) + 1));
+                        lineDistArray.add(lineDist);
+                        Log.d(TAG, "line dist " + lineDist);
                     }
+                }
+            }
+            Collections.sort(lineDistArray); // Sort distances min to max
+            ArrayList<Double> delta = new ArrayList<Double>(); //array of deltas in line distances
+            double max = 1;
+            double bogey = 0; //get max value in distances to set as bogey
+            double lastMax = 0;
 
+            Log.d(TAG, "size of line dist array " + lineDistArray.size());
 
-            for (int k = 0; k < lineDistArray.size(); k++) {  // for all the line distances totals, average the similar ones
-
-                if ((k >= 1) && ((Math.abs((lineDistArray.get(k-1))-(lineDistArray.get(k))) > 10))) {
-                    total = total + Math.abs(lineDistArray.get(k));
-                    goodDist++;
-                    Log.d(TAG, "linedistarray" + lineDistArray.get(k));
+            for (int n = 0; n < (lineDistArray.size()-1); n++) {  // for all the line distances totals, average binominal values
+                delta.add(lineDistArray.get(n + 1) - max);  // find the jump in array and then average after that
+                max = delta.get(n);
+                if (max > lastMax) {
+                    lastMax = max;
+                }
                 }
 
-            }
 
-                lineDist = (total /(goodDist-1)/7);
+            bogey = lastMax;
+
+                 Log.d(TAG, "distances in delta " + delta.size());
+
+            Log.d(TAG, "bogey " + bogey);
+
+            goodDist = 0;
+             for (int m = 0; m < delta.size(); m++ ) { // use bogey to find index.
+                 if (delta.get(m) < bogey) {
+                     goodDist++;
+                     Log.d(TAG, "index for small vs large" + goodDist);
+
+                 }
+
+             }
+                for (int l = goodDist; l < lineDistArray.size(); l++) {  //sum up all the larger sized and average them
+                    lineDist = lineDist + lineDistArray.get(l);
+                }
+                lineDist = lineDist / (lineDistArray.size()-goodDist);
+            Log.d(TAG, "linedist avg" + lineDist);
+
+
+
+                lineDist = (lineDist/85);
             TextView mainView = (TextView) findViewById(R.id.textView1);
             mainView.setText(String.format("Dist: %.2f", lineDist));
             TextView newView = (TextView) findViewById(R.id.textView2);
             newView.setText(Integer.toString(numOfLine));
+            numOfLine = 0;
+            lineDist = 0;
+            lineDistArray.removeAll(lineDistArray);
+            vertLines.removeAll(vertLines);
 
         }
 
